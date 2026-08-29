@@ -13,6 +13,18 @@
 - **回复前记忆注入**：根据对话中出现的人物，自动注入相关新闻与人物背景
 - **本地 JSON 持久化**：数据落盘为 JSON 文件，无需额外数据库
 
+## 技术栈
+
+| 层 | 技术 |
+|------|------|
+| 运行时 | Python 3.10+ · Neo-MoFox Core 1.2.0+（插件系统） |
+| 后端 API | FastAPI + Pydantic v2（管理后台 REST 接口） |
+| 前端面板 | Vue 3（CDN 引入，单文件 HTML，免构建） |
+| 任务调度 | asyncio 周期任务（统一调度器），分层整理 |
+| LLM 集成 | 子代理调用（默认 tool_use 任务）：摘要提炼、新闻整理、敏感分级、人物画像融合 |
+| 记忆注入 | 框架 prompt_api stream reminder 机制，回复前实时拾取 |
+| 数据存储 | 本地 JSON 文件（summaries.json / news.json / personas.json），无外部数据库 |
+
 ## 三层记忆架构
 
 | 层级 | 说明 | 默认间隔 |
