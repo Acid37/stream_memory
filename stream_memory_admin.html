@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>记忆管理后台 · Neo-MoFox</title>
+  <style>:root {
+      color-scheme: light;
+      --bg: #f4efe7;
+      --panel: rgba(255, 251, 245, 0.84);
+      --card: rgba(255, 255, 255, 0.84);
+      --surface: rgba(255, 255, 255, 0.72);
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: rgba(148, 110, 77, 0.18);
+      --accent: #b45309;
+      --accent-strong: #7c2d12;
+      --danger: #b42318;
+      --ok: #059669;
+      --chip-surface: rgba(255, 255, 255, 0.72);
+      --chip-surface-hover: rgba(217, 119, 6, 0.12);
+      --chip-surface-active: rgba(217, 119, 6, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI Variable", "PingFang SC", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(217, 119, 6, 0.18), transparent 28%),
+        radial-gradient(circle at right 12% top 12%, rgba(124, 45, 18, 0.12), transparent 20%),
+        linear-gradient(135deg, #f8f4ee 0%, #efe3d1 46%, #f7efe7 100%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background:
+        linear-gradient(135deg, rgba(217, 119, 6, 0.10), rgba(124, 45, 18, 0.05)),
+        rgba(255, 251, 245, 0.84);
+      box-shadow: 0 24px 70px rgba(109, 76, 44, 0.14);
+      margin-bottom: 16px;
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), transparent 35%),
+        linear-gradient(135deg, var(--accent), var(--accent-strong));
+      box-shadow: 0 8px 20px rgba(180, 83, 9, 0.18);
+      flex: 0 0 auto;
+    }
+
+    .brand-title {
+      display: grid;
+      gap: 4px;
+    }
+
+    .brand-title h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .brand-title .subline {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hero-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .hero-stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 110, 77, 0.18);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--text);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .hero-stat b {
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 20px;
+      backdrop-filter: blur(22px);
+      margin-bottom: 18px;
+      position: sticky;
+      top: 12px;
+      z-index: 10;
+      box-shadow: 0 24px 70px rgba(109, 76, 44, 0.10);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .search-input-wrap {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .search-input {
+      width: 240px;
+      border: 1px solid rgba(148, 110, 77, 0.28);
+      background: rgba(255, 255, 255, 0.80);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 12px;
+      outline: none;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+    }
+
+    .search-input::placeholder {
+      color: #a08060;
+    }
+
+    @media (max-width: 640px) {
+      .search-input { width: 100%; }
+    }
+
+    .toolbar-actions .ghost {
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--text);
+      border: 1px solid rgba(148, 110, 77, 0.2);
+    }
+
+    .toolbar-actions .ghost:hover {
+      background: rgba(217, 119, 6, 0.10);
+      border-color: rgba(180, 83, 9, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .toolbar-actions .danger {
+      background: rgba(180, 35, 24, 0.12);
+      border-color: rgba(180, 35, 24, 0.18);
+      color: var(--danger);
+    }
+
+    .toolbar-actions .danger:hover {
+      background: rgba(180, 35, 24, 0.22);
+      border-color: rgba(180, 35, 24, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .toolbar-actions .danger:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .toolbar h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: .02em;
+    }
+
+    .toolbar .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .main-overview {
+      display: grid;
+      gap: 14px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: .01em;
+    }
+
+    .section-meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+      margin-bottom: 18px;
+      align-items: start;
+    }
+
+    .issue-panel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,251,245,0.86), rgba(255,250,242,0.74));
+      padding: 16px 18px;
+      box-shadow: 0 16px 32px rgba(124, 45, 18, 0.10);
+      display: grid;
+      gap: 12px;
+    }
+
+    .issue-panel .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .issue-panel .panel-title strong {
+      font-size: 15px;
+      letter-spacing: .02em;
+    }
+
+    .issue-panel .count {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .issue-panel .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .issue-panel .actions {
+      margin-top: 2px;
+    }
+
+    .issue-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .issue-item {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .issue-item .name {
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .issue-item .state {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .summary-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,251,245,0.86), rgba(255,250,242,0.74));
+      padding: 16px 18px;
+      box-shadow: 0 16px 32px rgba(124, 45, 18, 0.10);
+    }
+
+    .summary-card .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .summary-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+
+    .summary-card .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .editor input,
+    .editor textarea {
+      width: 100%;
+      border: 1px solid rgba(148, 110, 77, 0.28);
+      background: rgba(255, 255, 255, 0.80);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      outline: none;
+    }
+
+    .editor input:focus,
+    .editor textarea:focus {
+      border-color: var(--accent);
+    }
+
+    button {
+      font-family: inherit;
+      border: 1px solid rgba(148, 110, 77, 0.22);
+      background: rgba(255, 251, 245, 0.90);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 15px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: .2s ease;
+      box-shadow: 0 2px 8px rgba(109, 76, 44, 0.06);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(109, 76, 44, 0.12);
+      border-color: rgba(180, 83, 9, 0.38);
+      background: rgba(255, 251, 245, 0.98);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 1px 4px rgba(109, 76, 44, 0.08);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .editor input::placeholder,
+    .editor textarea::placeholder {
+      color: #a08060;
+    }
+
+    .editor button,
+    .chip,
+    .tag {
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      background: var(--chip-surface);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .editor button:hover,
+    .chip:hover,
+    .tag:hover {
+      transform: translateY(-1px);
+      border-color: rgba(180, 83, 9, 0.45);
+      background: var(--chip-surface-hover);
+    }
+
+    .editor button.primary,
+    .actions button.primary {
+      background: rgba(180, 83, 9, 0.14);
+      border-color: rgba(180, 83, 9, 0.28);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .chip.active {
+      background: var(--chip-surface-active);
+      border-color: rgba(180, 83, 9, 0.48);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .grid.landscape {
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
+
+    .grid.landscape .card {
+      flex-direction: row;
+      align-items: stretch;
+    }
+
+    .grid.landscape .card img {
+      width: 120px;
+      height: auto;
+      min-height: 100%;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
+    .grid.landscape .card-body {
+      flex: 1;
+      min-width: 0;  /* 防止 flex 子项溢出 */
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--card);
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .card.selected {
+      border-color: rgba(180, 83, 9, 0.5);
+      box-shadow: 0 8px 24px rgba(180, 83, 9, 0.12);
+    }
+
+    .card-check {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 2;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: rgba(237, 227, 211, 0.80);
+      display: block;
+    }
+
+    .card-body {
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .card-meta {
+      font-size: 12px;
+    }
+
+    .card-description {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-all;
+    }
+
+    /* 横图模式空间更大，允许 3 行 */
+    .grid.landscape .card-description {
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+    }
+
+    .view-toggle button {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .view-toggle button.active {
+      background: var(--chip-surface-hover);
+      border-color: rgba(180, 83, 9, 0.4);
+    }
+
+    .toolbar-actions button.ghost {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(180, 83, 9, 0.12);
+      border: 1px solid rgba(180, 83, 9, 0.22);
+      color: var(--text);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .hint-box {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: rgba(180, 83, 9, 0.08);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: default;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .actions button {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .actions button.danger {
+      background: rgba(180, 35, 24, 0.08);
+      border-color: rgba(180, 35, 24, 0.22);
+      color: var(--danger);
+    }
+
+    .actions button.danger:hover {
+      background: rgba(180, 35, 24, 0.16);
+      border-color: rgba(180, 35, 24, 0.40);
+      box-shadow: 0 6px 16px rgba(180, 35, 24, 0.14);
+    }
+
+    .actions button.primary {
+      background: rgba(180, 83, 9, 0.12);
+      border-color: rgba(180, 83, 9, 0.32);
+      color: var(--accent);
+    }
+
+    .actions button.primary:hover {
+      background: rgba(180, 83, 9, 0.22);
+      border-color: rgba(180, 83, 9, 0.50);
+      box-shadow: 0 6px 16px rgba(180, 83, 9, 0.14);
+    }
+
+    /* 下载按钮：复用 .actions button 的尺寸，让 <a>视觉上像按钮 */
+    .actions a.download-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      font-size: 12px;
+      text-decoration: none;
+      line-height: 1.2;
+    }
+
+    .empty {
+      padding: 80px 20px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed rgba(148, 110, 77, 0.25);
+      border-radius: 18px;
+      background: rgba(255, 251, 245, 0.60);
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(109, 76, 44, 0.55);
+      backdrop-filter: blur(12px);
+      z-index: 50;
+      padding: 24px;
+    }
+
+    .overlay.show { display: flex; }
+
+    .modal {
+      width: min(920px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 251, 245, 0.97);
+      box-shadow: 0 18px 56px rgba(109, 76, 44, 0.25);
+      padding: 20px;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 18px;
+    }
+
+    .preview {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(237, 227, 211, 0.60);
+    }
+
+    .preview img {
+      width: 100%;
+      height: auto;
+      display: block;
+      max-height: 72vh;
+      object-fit: contain;
+    }
+
+    .editor {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .editor textarea {
+      min-height: 180px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .editor .tag-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 251, 245, 0.80);
+      min-height: 58px;
+    }
+
+    .editor .tag-picker .tag.active {
+      background: rgba(180, 83, 9, 0.18);
+      border-color: rgba(180, 83, 9, 0.45);
+    }
+
+    .footer-note {
+      color: var(--muted);
+      margin-top: 16px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .topline-title {
+      display: grid;
+      gap: 2px;
+    }
+
+    .topline-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent-strong);
+    }
+
+    .topline .subtitle {
+      color: var(--muted);
+      margin-top: 0;
+      font-size: 13px;
+    }
+
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .close-btn:hover {
+      background: rgba(180, 35, 24, 0.12);
+      border-color: rgba(180, 35, 24, 0.3);
+      color: var(--danger);
+    }
+
+    .status-bar {
+      text-align: center;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status-bar.error {
+      color: var(--danger);
+      background: rgba(180, 35, 24, 0.08);
+      border-radius: 8px;
+    }
+
+    .operation-msg {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 9999;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      white-space: nowrap;
+    }
+
+    .operation-msg.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .operation-msg.error {
+      background: var(--danger);
+    }
+
+    /* ===== 记忆后台扩展：前版完整布局组件（沿用同一套设计语言与 token） ===== */
+
+    /* 摘要层：左侧群列表 + 右侧时间线 */
+    .summary-layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .group-list {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: 70vh;
+    }
+
+    .group-list-header {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 251, 245, 0.5);
+    }
+
+    .group-list-header input {
+      width: 100%;
+    }
+
+    .group-scroll {
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .group-item {
+      padding: 12px 14px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .group-item:hover {
+      background: var(--chip-surface-hover);
+      border-color: rgba(180, 83, 9, 0.15);
+    }
+
+    .group-item.active {
+      background: rgba(255, 255, 255, 0.85);
+      border-color: rgba(180, 83, 9, 0.4);
+      box-shadow: 0 4px 12px rgba(109, 76, 44, 0.06);
+    }
+
+    .group-item .g-name {
+      font-weight: 600;
+      font-size: 13.5px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 4px;
+    }
+
+    .group-item .g-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .summary-detail {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 500px;
+    }
+
+    .summary-detail-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 251, 245, 0.5);
+    }
+
+    .summary-detail-header strong {
+      font-size: 16px;
+      color: var(--accent-strong);
+    }
+
+    .summary-detail-body {
+      padding: 20px;
+      overflow-y: auto;
+      max-height: 65vh;
+    }
+
+    /* 时间轴 */
+    .timeline {
+      position: relative;
+      padding-left: 28px;
+      border-left: 1px dashed rgba(148, 110, 77, 0.4);
+      margin-left: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .timeline-node {
+      position: relative;
+    }
+
+    .timeline-marker {
+      position: absolute;
+      left: -35px;
+      top: 6px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+      transition: all 0.2s ease;
+    }
+
+    .timeline-node.deprecated .timeline-marker {
+      background: var(--muted);
+      box-shadow: none;
+    }
+
+    .timeline-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 16px;
+      box-shadow: 0 4px 14px rgba(109, 76, 44, 0.04);
+      transition: all 0.2s ease;
+    }
+
+    .timeline-card:hover {
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .timeline-card.deprecated {
+      opacity: 0.65;
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .timeline-card-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      align-items: center;
+    }
+
+    .timeline-card-content {
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: var(--text);
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+
+    /* Switch 开关 */
+    .switch-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--muted);
+    }
+
+    .switch-wrap input {
+      display: none;
+    }
+
+    .switch-inner {
+      width: 34px;
+      height: 18px;
+      background: rgba(148, 110, 77, 0.28);
+      border-radius: 999px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .switch-inner::after {
+      content: "";
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+
+    input:checked + .switch-inner {
+      background: var(--accent);
+    }
+
+    input:checked + .switch-inner::after {
+      transform: translateX(16px);
+    }
+
+    /* 新闻层：流式卡片 */
+    .news-card-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .news-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 16px 20px;
+      box-shadow: 0 4px 16px rgba(109, 76, 44, 0.04);
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .news-card:hover {
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .news-card.selected {
+      border-color: rgba(180, 83, 9, 0.45);
+      background: rgba(255, 251, 245, 0.5);
+    }
+
+    .news-checkbox {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      margin-top: 4px;
+      cursor: pointer;
+    }
+
+    .news-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .news-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .news-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent-strong);
+    }
+
+    .news-desc {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .news-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    /* 敏感级徽章 */
+    .level-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .level-badge.normal {
+      background: rgba(5, 150, 105, 0.1);
+      color: var(--ok);
+      border: 1px solid rgba(5, 150, 105, 0.2);
+    }
+
+    .level-badge.soft_scoped {
+      background: rgba(217, 119, 6, 0.1);
+      color: #d97706;
+      border: 1px solid rgba(217, 119, 6, 0.2);
+    }
+
+    .level-badge.hard_scoped {
+      background: rgba(180, 35, 24, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(180, 35, 24, 0.2);
+    }
+
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(148, 110, 77, 0.08);
+      border: 1px solid rgba(148, 110, 77, 0.15);
+      font-size: 11px;
+      color: var(--accent-strong);
+      gap: 4px;
+    }
+
+    /* 人物层：画像网格 */
+    .persona-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 18px;
+    }
+
+    .persona-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--card);
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(109, 76, 44, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .persona-card:hover {
+      box-shadow: 0 12px 32px rgba(109, 76, 44, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .persona-header {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .p-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(148, 110, 77, 0.15);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--accent-strong);
+      font-size: 15px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .p-meta {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .p-id {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--accent-strong);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .p-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .p-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+      margin-top: auto;
+    }
+
+    .p-actions button {
+      padding: 6px 14px;
+      font-size: 12px;
+      border-radius: 8px;
+    }
+
+    .p-body {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: -webkit-box;
+      -webkit-line-clamp: 5;
+      line-clamp: 5;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* 首屏加载遮罩 */
+    .boot-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(248, 243, 234, 0.72);
+      backdrop-filter: blur(3px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    .boot-spinner {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 3px solid rgba(148, 110, 77, 0.2);
+      border-top-color: var(--accent);
+      animation: boot-spin 0.9s linear infinite;
+    }
+
+    @keyframes boot-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .boot-text {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* 空白与错误提示 */
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed rgba(148, 110, 77, 0.25);
+      border-radius: 18px;
+      background: rgba(255, 251, 245, 0.60);
+      font-size: 13.5px;
+    }
+
+    @media (max-width: 900px) {
+      .summary-layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 900px) {
+      .modal-grid { grid-template-columns: 1fr; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dashboard { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      .summary { grid-template-columns: 1fr; }
+      .topline { flex-direction: column; align-items: flex-start; }
+
+      /* Hero: 改为纵向堆叠，避免统计徽章挤压 */
+      .hero {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .hero-stats {
+        justify-content: flex-start;
+        width: 100%;
+      }
+      .hero-stat {
+        font-size: 11px;
+        padding: 6px 10px;
+      }
+
+      /* 卡片 actions: 4 个按钮在小屏换行，按钮缩小 */
+      .actions {
+        flex-wrap: wrap;
+      }
+      .actions button,
+      .actions a.download-btn {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 60px;
+        text-align: center;
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+
+      /* 模态框: 贴边显示 */
+      .modal {
+        padding: 14px;
+        max-height: 95vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- 首屏加载遮罩 -->
+    <div v-if="loading && !loadedOnce" class="boot-overlay">
+      <div class="boot-spinner"></div>
+      <div class="boot-text">正在读取大脑数据…</div>
+    </div>
+
+    <!-- 头部区域 -->
+    <section class="hero">
+      <div class="brand-title">
+        <h1>记忆管理后台</h1>
+        <div class="subline">Neo-MoFox · 三层记忆深度管理（群快照、全局事件、用户终身画像）</div>
+        <div class="subline">同步说明：{{ syncInfoText }}</div>
+      </div>
+      <div class="hero-stats">
+        <span class="hero-stat">监测流: <b>{{ health.summaries_count }}</b>个</span>
+        <span class="hero-stat">全局事实: <b>{{ health.news_count }}</b>条</span>
+        <span class="hero-stat">存盘人物: <b>{{ health.personas_count }}</b>人</span>
+        <span class="hero-stat">存储空间: <b>{{ health.total_size_kb }}</b>KB</span>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div>
+        <h1>{{ viewTitle }}</h1>
+        <div class="meta">支持实时读写分离，多级过滤及手动触发 LLM 提炼</div>
+      </div>
+      <div class="toolbar-actions">
+        <button class="ghost" @click="fetchData" :disabled="loading">
+          {{ loading ? '同步数据中...' : ' 刷新数据' }}
+        </button>
+        <button class="ghost" @click="triggerJob('summary')" :disabled="triggeringSummary">
+          {{ triggeringSummary ? '正在提取摘要...' : '立即提炼群快照' }}
+        </button>
+        <button class="ghost" @click="triggerJob('news')" :disabled="triggeringNews">
+          {{ triggeringNews ? '正在整合新闻...' : '立即巩固全局事件' }}
+        </button>
+        <button class="ghost" @click="exportData">导出 JSON 备份</button>
+        <button class="danger" v-if="activeTab === 'news'" @click="confirmBatchDeleteNews" :disabled="!selectedNews.length">批量删除 ({{ selectedNews.length }})
+        </button>
+      </div>
+    </div>
+
+    <div class="status-bar" :class="{ error: loadError }">
+      {{ loadError || '后台已准备就绪' }}
+    </div>
+    <div class="operation-msg" :class="{ show: opMessage, error: opError }">
+      {{ opMessage }}
+    </div>
+
+    <!-- 页签 -->
+    <div class="filters">
+      <button class="chip" :class="{ active: activeTab === 'dashboard' }" @click="setTab('dashboard')">大脑健康概览</button>
+      <button class="chip" :class="{ active: activeTab === 'summaries' }" @click="setTab('summaries')">摘要层 (群快照)</button>
+      <button class="chip" :class="{ active: activeTab === 'news' }" @click="setTab('news')">新闻层 (全局事实)</button>
+      <button class="chip" :class="{ active: activeTab === 'personas' }" @click="setTab('personas')">人物层 (长期画像)</button>
+    </div>
+
+    <!--  仪表盘概览 -->
+    <div v-if="activeTab === 'dashboard'" class="dashboard">
+      <div class="main-overview">
+        <div class="section-head">
+          <h2>总览</h2>
+          <div class="section-meta">三层记忆实时统计与数据走向</div>
+        </div>
+        <div class="summary">
+          <div class="summary-card">
+            <div class="label">物理数据空间</div>
+            <div class="value">{{ health.total_size_kb }} KB</div>
+            <div class="hint">当前记忆物理文件（summaries.json、news.json、personas.json）合计大小</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">大脑存活状况</div>
+            <div class="value">Active</div>
+            <div class="hint">三层敏感级别（普通、软警告、强隔离）过滤网关已常驻就绪</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">最近写入检查</div>
+            <div class="value">{{ lastSyncLabel }}</div>
+            <div class="hint">底层文件监控的最新检查时间</div>
+          </div>
+        </div>
+
+        <div class="summary-card">
+          <div class="label">大脑分层设计与数据走向</div>
+          <div style="font-size: 13.5px; line-height: 1.8; color: var(--text); padding-top: 4px;">
+            <p>1. <b>摘要层 (Summaries)</b>: 实时捕获近期发生的群聊上下文，作为极短期的碎片化群快照，当摘要生成后可由人工手动切断其对全局事实的潜在影响。</p>
+            <p>2. <b>新闻层 (News Entries)</b>: 将零散的群摘要中涉及的重要社会事实提取并巩固，升级为跨群流传的"全局社会新闻"，达到遗忘阈值后将自动被淘汰。</p>
+            <p>3. <b>人物层 (Persona Profiles)</b>: 当全局事实新闻因衰减淘汰被物理擦除时，涉及人物的性格特写与偏好变化，会被二次沉淀进其终身性格档案中。</p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="issue-panel">
+        <div class="panel-title">
+          <strong>记忆备份与维护</strong>
+          <span class="status-pill">{{ health.total_size_kb }} KB</span>
+        </div>
+        <div class="count">{{ health.total_size_kb }}</div>
+        <div class="hint">将当前大脑的全部三层记忆库导出为本地 JSON 备份文件，方便随时在异常时进行手工迁移或离线核对。
+        </div>
+        <div class="actions">
+          <button class="chip" @click="exportData">导出全部记忆 (JSON)</button>
+        </div>
+      </aside>
+    </div>
+
+    <!--  摘要层 (群快照) -->
+    <div v-if="activeTab === 'summaries'" class="summary-layout">
+      <!-- 左侧群聊卡片列表 -->
+      <div class="group-list">
+        <div class="group-list-header">
+          <input v-model="groupSearch" type="text" class="search-input" placeholder="搜索群号/群名称..." />
+        </div>
+        <div class="group-scroll">
+          <div class="empty-state" v-if="filteredGroups.length === 0" style="padding: 20px 10px;">未发现匹配群聊</div>
+          <div
+            v-for="g in filteredGroups"
+            :key="g.stream_id"
+            class="group-item"
+            :class="{ active: selectedGroup?.stream_id === g.stream_id }"
+            @click="selectGroup(g)"
+          >
+            <div class="g-name">{{ g.group_name || '未命名群聊' }}</div>
+            <div class="g-meta">
+              <span>群号: {{ g.group_id || '未知' }}</span>
+              <span>条目: {{ g.entries.length }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧时间轴 -->
+      <div class="summary-detail">
+        <template v-if="selectedGroup">
+          <div class="summary-detail-header">
+            <div>
+              <strong>{{ selectedGroup.group_name }}</strong>
+              <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">(Stream ID: {{ selectedGroup.stream_id }})</span>
+            </div>
+            <button class="danger" style="padding: 6px 12px; font-size: 11px;" @click="confirmDeleteGroup(selectedGroup.stream_id)">清理该群分组</button>
+          </div>
+          <div class="summary-detail-body">
+            <div class="empty-state" v-if="selectedGroup.entries.length === 0">当前群聊暂无快照摘要记录</div>
+            <div class="timeline" v-else>
+              <div
+                v-for="(entry, index) in selectedGroup.entries"
+                :key="index"
+                class="timeline-node"
+                :class="{ deprecated: entry.deprecated }"
+              >
+                <div class="timeline-marker"></div>
+                <div class="timeline-card" :class="{ deprecated: entry.deprecated }">
+                  <div class="timeline-card-header">
+                    <span> {{ formatTime(entry.timestamp) }}</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <button style="padding: 4px 10px; font-size: 11px; border-radius: 8px;" @click="openSummaryEdit(selectedGroup.stream_id, index, entry)">编辑</button>
+                      <label class="switch-wrap">
+                        <input
+                          type="checkbox"
+                          :checked="entry.deprecated"
+                          @change="toggleSummary(selectedGroup.stream_id, index, $event.target.checked)"
+                        />
+                        <div class="switch-inner"></div>
+                        <span>{{ entry.deprecated ? '已废弃/消费' : '待整合' }}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="timeline-card-content">
+                    {{ entry.summary || entry.content }}
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    <span class="tag-pill" v-for="p in entry.participants" :key="p.person_id">
+                       {{ p.name || p.display_name || p.person_id }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div
+          v-else
+          class="empty-state"
+          style="flex: 1; border: none; display: flex; align-items: center; justify-content: center; background: transparent;"
+        >请在左侧选择一个活跃群聊查看碎记忆快照
+        </div>
+      </div>
+    </div>
+
+    <!--  新闻层 (全局事实) -->
+    <div v-if="activeTab === 'news'">
+      <div class="toolbar" style="position: static; margin-bottom: 14px; box-shadow: none; padding: 12px 14px;">
+        <div class="toolbar-actions" style="justify-content: flex-start; flex: 1; gap: 12px;">
+          <input v-model="newsSearch" type="text" class="search-input" style="width: 280px;" placeholder="过滤新闻标题或细节内容..." />
+          <select v-model="newsFilterSensitivity" class="search-input" style="width: 180px;">
+            <option value="">全部敏感等级</option>
+            <option value="normal">普通 (normal)</option>
+            <option value="soft_scoped">跨群软警告 (soft)</option>
+            <option value="hard_scoped">群内物理强隔离 (hard)</option>
+          </select>
+        </div>
+        <button class="danger" :disabled="!selectedNews.length" @click="confirmBatchDeleteNews">批量删除 ({{ selectedNews.length }})
+        </button>
+      </div>
+
+      <div class="empty-state" v-if="filteredNews.length === 0">未找到任何社会全局事实条目</div>
+      <div class="news-card-flow" v-else>
+        <article class="news-card" v-for="item in filteredNews" :key="item.id" :class="{ selected: selectedNews.includes(item.id) }">
+          <input
+            type="checkbox"
+            class="news-checkbox"
+            :checked="selectedNews.includes(item.id)"
+            @change="toggleNewsSelection(item.id, $event.target.checked)"
+          />
+          <div class="news-body">
+            <div class="news-meta-row">
+              <span> {{ formatTime(item.timestamp) }}</span>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span :class="['level-badge', item.sensitivity || 'normal']">
+                  {{ item.sensitivity || 'normal' }}
+                </span>
+                <button style="padding: 4px 8px; font-size: 11px; border-radius: 8px;" @click="openNewsEdit(item)">编辑</button>
+                <button class="danger" style="padding: 4px 8px; font-size: 11px; border-radius: 8px;" @click="confirmDeleteOneNews(item.id)">删除</button>
+              </div>
+            </div>
+            <div class="news-title">{{ item.title || '社会纪实段落' }}</div>
+            <p class="news-desc">{{ item.content }}</p>
+            <div class="news-tags">
+              <span class="tag-pill" v-if="item.origin_stream_id">来源: {{ item.origin_stream_id }}</span>
+              <span class="tag-pill" v-for="p in item.participants" :key="p.person_id">
+                 {{ p.name || p.display_name || p.person_id }}
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!--  人物层 (长期性格设定画像) -->
+    <div v-if="activeTab === 'personas'">
+      <div class="actions" style="margin-bottom: 12px;">
+        <button class="primary" @click="openPersonaModal(null, '')">录入新画像</button>
+      </div>
+
+      <div class="toolbar" style="position: static; margin-bottom: 14px; box-shadow: none; padding: 12px 14px;">
+        <h2 style="font-size: 15px; font-weight: 700; color: var(--accent-strong); margin: 0;">画像名册 ({{ Object.keys(personas).length }} 人)</h2>
+        <input v-model="personaSearch" type="text" class="search-input" style="width: 200px;" placeholder="搜索人物 ID..." />
+      </div>
+
+      <div class="empty-state" v-if="Object.keys(filteredPersonas).length === 0">未捕获到任何人物长期性格快照</div>
+      <div class="persona-grid" v-else>
+        <article v-for="(text, pid) in filteredPersonas" :key="pid" class="persona-card">
+          <div class="persona-header">
+            <div class="p-avatar">
+              <span>{{ pid.substring(0, 2).toUpperCase() }}</span>
+            </div>
+            <div class="p-meta">
+              <div class="p-id" :title="pid">{{ pid }}</div>
+              <div class="p-sub">{{ platformLabel(pid) }}</div>
+            </div>
+          </div>
+          <div class="p-body">{{ text }}</div>
+          <div class="p-actions">
+            <button class="primary" @click="openPersonaModal(pid, text)">编辑</button>
+            <button class="danger" @click="confirmDeletePersona(pid)">忘却</button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- 人物画像编辑/录入弹窗 -->
+    <div class="overlay" :class="{ show: personaModalOpen }" @click.self="closePersonaModal">
+      <div class="modal">
+        <div class="topline">
+          <div class="topline-title">
+            <div class="topline-name">{{ personaModalPid ? '编辑人物画像' : '录入新画像' }}</div>
+            <div class="subtitle">修改后将重新刻印进长期性格档案</div>
+          </div>
+          <button class="close-btn" @click="closePersonaModal" aria-label="关闭">✕</button>
+        </div>
+        <div class="editor">
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">人物 ID (QQ号 或 英文标识)</div>
+            <input v-model="editPersonaForm.person_id" type="text" placeholder="例如: 258309999" />
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">快捷倾向模板注入</div>
+            <div class="tag-picker">
+              <button v-for="t in ['死党', '对立', '新人']" :key="t" class="tag" @click.prevent="applyTemplate(t)">{{ t }}</button>
+            </div>
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">画像记忆背景描述 (Persona)</div>
+            <textarea v-model="editPersonaForm.text" :rows="8" placeholder="在此处写入或编辑此人的成长偏好、性格特点、互动习惯等核心画像设定..."></textarea>
+          </label>
+          <div class="actions">
+            <button class="primary" @click="savePersona">刻印设定记忆</button>
+            <button @click="closePersonaModal">取消</button>
+          </div>
+          <div class="footer-note">刻印会写入 personas.json 并立即生效；忘却会彻底擦除该人物的全部性格设定，此操作不可逆。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 摘要条目编辑弹窗 -->
+    <div class="overlay" :class="{ show: summaryEditOpen }" @click.self="closeSummaryEdit">
+      <div class="modal">
+        <div class="topline">
+          <div class="topline-title">
+            <div class="topline-name">编辑摘要快照</div>
+            <div class="subtitle">{{ summaryEdit ? formatTime(summaryEdit.timestamp) : '' }} · 修改后立即写回摘要层</div>
+          </div>
+          <button class="close-btn" @click="closeSummaryEdit" aria-label="关闭">✕</button>
+        </div>
+        <div class="editor">
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">摘要正文</div>
+            <textarea v-model="summaryEditContent" :rows="8" placeholder="请输入新的摘要内容..."></textarea>
+          </label>
+          <div class="actions">
+            <button class="primary" @click="saveSummaryEdit">保存修改</button>
+            <button @click="closeSummaryEdit">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新闻条目编辑弹窗 -->
+    <div class="overlay" :class="{ show: newsEditOpen }" @click.self="closeNewsEdit">
+      <div class="modal">
+        <div class="topline">
+          <div class="topline-title">
+            <div class="topline-name">编辑全局事实</div>
+            <div class="subtitle">{{ newsEdit ? formatTime(newsEdit.timestamp) : '' }} · 修改后立即写回新闻层</div>
+          </div>
+          <button class="close-btn" @click="closeNewsEdit" aria-label="关闭">✕</button>
+        </div>
+        <div class="editor">
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">标题</div>
+            <input v-model="newsEditTitle" type="text" placeholder="一句话总结" />
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">正文内容</div>
+            <textarea v-model="newsEditContent" :rows="8" placeholder="请输入正文内容..."></textarea>
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">参与人物 ID（逗号分隔，格式 platform:user_id）</div>
+            <input v-model="newsEditPersonIds" type="text" placeholder="例如: qq:123456, qq:789012" />
+            <div class="hint-box">参与人物决定这条记忆在谁出现时被召回；留空则永远不会被召回（惰性存储）。</div>
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom: 6px;">敏感等级</div>
+            <select v-model="newsEditSensitivity" class="search-input" style="width: 100%;">
+              <option value="normal">普通 (normal)</option>
+              <option value="soft_scoped">跨群软警告 (soft)</option>
+              <option value="hard_scoped">群内物理强隔离 (hard)</option>
+            </select>
+          </label>
+          <div class="actions">
+            <button class="primary" @click="saveNewsEdit">保存修改</button>
+            <button @click="closeNewsEdit">取消</button>
+          </div>
+          <div class="footer-note">修改会同步影响该记忆在对话中的召回表现；hard_scoped 仅来源群内可召回。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const activeTab = ref('dashboard');
+        const loading = ref(false);
+        const loadError = ref('');
+        const loadedOnce = ref(false);
+        const summaries = ref([]);
+        const news = ref([]);
+        const personas = ref({});
+        const health = ref({ total_size_kb: 0, summaries_count: 0, news_count: 0, personas_count: 0, last_sync: null });
+
+        const groupSearch = ref('');
+        const selectedGroup = ref(null);
+
+        const newsSearch = ref('');
+        const newsFilterSensitivity = ref('');
+        const selectedNews = ref([]);
+
+        const personaSearch = ref('');
+        const editPersonaForm = ref({ person_id: '', text: '' });
+        const personaModalOpen = ref(false);
+        const personaModalPid = ref('');
+
+        const summaryEditOpen = ref(false);
+        const summaryEdit = ref(null);
+        const summaryEditContent = ref('');
+
+        const newsEditOpen = ref(false);
+        const newsEdit = ref(null);
+        const newsEditTitle = ref('');
+        const newsEditContent = ref('');
+        const newsEditSensitivity = ref('normal');
+        const newsEditPersonIds = ref('');
+
+        const triggeringSummary = ref(false);
+        const triggeringNews = ref(false);
+
+        // Toast 状态
+        const opMessage = ref('');
+        const opError = ref(false);
+        const showToast = (msg, isError = false) => {
+          opError.value = !!isError;
+          opMessage.value = msg;
+          if (window._toastTimer) clearTimeout(window._toastTimer);
+          window._toastTimer = setTimeout(() => {
+            opMessage.value = '';
+            opError.value = false;
+          }, 2500);
+        };
+
+        const viewTitle = computed(() => {
+          const titles = {
+            dashboard: '记忆引擎健康与状态总览',
+            summaries: '群聊摘要快照时间线',
+            news: '全局事实事件流',
+            personas: '人物性格设定长期画像'
+          };
+          return titles[activeTab.value] || '大脑控制中心';
+        });
+
+        const syncInfoText = computed(() => {
+          const lastSync = health.value.last_sync;
+          if (!lastSync) return '尚未执行写入检查，请稍后刷新页面。';
+          return `上次写入检查：${typeof lastSync === 'number' ? formatTime(lastSync) : lastSync}`;
+        });
+
+        const lastSyncLabel = computed(() => {
+          const t = health.value.last_sync;
+          if (!t) return '未知';
+          return typeof t === 'number' ? formatTime(t) : String(t);
+        });
+
+        const formatTime = (ts) => {
+          if (!ts) return '-';
+          const d = new Date(Number(ts) * 1000);
+          return d.toLocaleString();
+        };
+
+        const fetchData = async () => {
+          loading.value = true;
+          loadError.value = '';
+          try {
+            const res = await fetch('./api/dashboard');
+            const data = await res.json();
+            if (data.status === 'error') {
+              loadError.value = '加载失败：' + (data.message || '未知错误');
+              return;
+            }
+            summaries.value = data.summaries || [];
+            news.value = data.news || [];
+            personas.value = data.personas || {};
+            health.value = data.health || health.value;
+
+            // 保持已选群状态
+            if (selectedGroup.value) {
+              const found = summaries.value.find(g =>g.stream_id === selectedGroup.value.stream_id);
+              selectedGroup.value = found || null;
+            }
+            selectedNews.value = selectedNews.value.filter((id) =>news.value.some((item) =>item.id === id));
+          } catch (e) {
+            console.error(e);
+            loadError.value = '加载失败：' + (e.message || String(e));
+          } finally {
+            loading.value = false;
+            loadedOnce.value = true;
+          }
+        };
+
+        const platformLabel = (pid) => {
+          const id = String(pid || '');
+          const idx = id.indexOf(':');
+          if (idx <= 0) return '自定义标识';
+          const platform = id.slice(0, idx);
+          const raw = id.slice(idx + 1);
+          const map = { qq: 'QQ', bilibili: 'B站', local_asr: '本地语音', onebot: 'OneBot' };
+          return (map[platform] || platform) + ' · ' + raw;
+        };
+
+        // 摘要层过滤
+        const filteredGroups = computed(() => {
+          if (!groupSearch.value) return summaries.value;
+          const query = groupSearch.value.toLowerCase();
+          return summaries.value.filter(g =>(g.group_name && g.group_name.toLowerCase().includes(query)) ||
+            (g.group_id && g.group_id.includes(query))
+          );
+        });
+
+        const selectGroup = (group) => {
+          selectedGroup.value = group;
+        };
+
+        const toggleSummary = async (stream_id, idx, val) => {
+          try {
+            const resp = await fetch('./api/summary/toggle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ stream_id, entry_index: idx, deprecated: val })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            const entry = selectedGroup.value && selectedGroup.value.entries[idx];
+            if (entry) entry.deprecated = val;
+            showToast(val ? '已标记为废弃' : '已重新启用');
+          } catch (e) {
+            console.error(e);
+            showToast('切换快照状态失败', true);
+          }
+        };
+
+        const confirmDeleteGroup = async (stream_id) => {
+          if (!confirm('这会彻底删除该群的所有摘要快照记忆碎片，是否继续？')) return;
+          try {
+            const resp = await fetch('./api/summary/delete-group', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ stream_id })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('清理群分组成功');
+            selectedGroup.value = null;
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('清理失败', true);
+          }
+        };
+
+        // 新闻层过滤与多选
+        const filteredNews = computed(() => {
+          let result = news.value;
+          if (newsSearch.value) {
+            const query = newsSearch.value.toLowerCase();
+            result = result.filter(item =>(item.title && item.title.toLowerCase().includes(query)) ||
+              (item.content && item.content.toLowerCase().includes(query))
+            );
+          }
+          if (newsFilterSensitivity.value) {
+            result = result.filter(item =>item.sensitivity === newsFilterSensitivity.value);
+          }
+          return result;
+        });
+
+        const toggleNewsSelection = (id, checked) => {
+          if (checked) {
+            if (!selectedNews.value.includes(id)) {
+              selectedNews.value.push(id);
+            }
+          } else {
+            selectedNews.value = selectedNews.value.filter(x =>x !== id);
+          }
+        };
+
+        const confirmDeleteOneNews = async (id) => {
+          if (!confirm('确定删除该事实条目吗？这不可逆。')) return;
+          try {
+            const resp = await fetch('./api/news/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ news_ids: [id] })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('已从记忆中删除此事实');
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('删除失败', true);
+          }
+        };
+
+        const confirmBatchDeleteNews = async () => {
+          if (!selectedNews.value.length) return;
+          if (!confirm(`确定批量擦除已选中的这 ${selectedNews.value.length} 条记忆新闻吗？`)) return;
+          try {
+            const resp = await fetch('./api/news/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ news_ids: selectedNews.value })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('批量擦除事实成功');
+            selectedNews.value = [];
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('批量擦除失败', true);
+          }
+        };
+
+        // 人物层过滤
+        const filteredPersonas = computed(() => {
+          if (!personaSearch.value) return personas.value;
+          const query = personaSearch.value.toLowerCase();
+          const filtered = {};
+          for (const [pid, text] of Object.entries(personas.value)) {
+            if (pid.includes(query) || (text && text.toLowerCase().includes(query))) {
+              filtered[pid] = text;
+            }
+          }
+          return filtered;
+        });
+
+        const openPersonaModal = (pid, text) => {
+          personaModalPid.value = pid || '';
+          editPersonaForm.value = { person_id: pid || '', text: text || '' };
+          personaModalOpen.value = true;
+        };
+
+        const closePersonaModal = () => {
+          personaModalOpen.value = false;
+          personaModalPid.value = '';
+          editPersonaForm.value = { person_id: '', text: '' };
+        };
+
+        const savePersona = async () => {
+          const personId = (editPersonaForm.value.person_id || '').trim();
+          const text = (editPersonaForm.value.text || '').trim();
+          if (!personId) {
+            showToast('请输入人物唯一 ID', true);
+            return;
+          }
+          if (!text) {
+            showToast('画像背景描述不能为空', true);
+            return;
+          }
+          try {
+            const resp = await fetch('./api/persona/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ person_id: personId, text })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('刻印人物长期档案成功');
+            closePersonaModal();
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('刻印失败', true);
+          }
+        };
+
+        const confirmDeletePersona = async (pid) => {
+          if (!confirm(`确定在大脑里完全擦除关于 ${pid} 的人物性格设定吗？此操作不可逆。`)) return;
+          try {
+            const resp = await fetch('./api/persona/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ person_id: pid })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('已遗忘此人');
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('忘却失败', true);
+          }
+        };
+
+        // 摘要条目编辑
+        const openSummaryEdit = (stream_id, index, entry) => {
+          summaryEdit.value = {
+            stream_id,
+            index,
+            timestamp: entry.timestamp,
+            content: entry.content || ''
+          };
+          summaryEditContent.value = entry.content || '';
+          summaryEditOpen.value = true;
+        };
+
+        const closeSummaryEdit = () => {
+          summaryEditOpen.value = false;
+          summaryEdit.value = null;
+          summaryEditContent.value = '';
+        };
+
+        const saveSummaryEdit = async () => {
+          if (!summaryEdit.value) return;
+          const content = summaryEditContent.value.trim();
+          if (!content) {
+            showToast('摘要正文不能为空', true);
+            return;
+          }
+          try {
+            const resp = await fetch('./api/summary/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                stream_id: summaryEdit.value.stream_id,
+                entry_index: summaryEdit.value.index,
+                content
+              })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            const entry = selectedGroup.value && selectedGroup.value.entries[summaryEdit.value.index];
+            if (entry) entry.content = content;
+            showToast('摘要快照已更新');
+            closeSummaryEdit();
+          } catch (e) {
+            console.error(e);
+            showToast('更新摘要失败', true);
+          }
+        };
+
+        // 新闻条目编辑
+        const openNewsEdit = (item) => {
+          newsEdit.value = {
+            id: item.id,
+            timestamp: item.timestamp,
+            title: item.title || '',
+            content: item.content || '',
+            sensitivity: item.sensitivity || 'normal'
+          };
+          newsEditTitle.value = item.title || '';
+          newsEditContent.value = item.content || '';
+          newsEditSensitivity.value = item.sensitivity || 'normal';
+          newsEditPersonIds.value = (Array.isArray(item.participants)
+            ? item.participants.map(p =>p.person_id || '').filter(Boolean)
+            : []).join(', ');
+          newsEditOpen.value = true;
+        };
+
+        const closeNewsEdit = () => {
+          newsEditOpen.value = false;
+          newsEdit.value = null;
+          newsEditTitle.value = '';
+          newsEditContent.value = '';
+          newsEditSensitivity.value = 'normal';
+        };
+
+        const saveNewsEdit = async () => {
+          if (!newsEdit.value) return;
+          const content = newsEditContent.value.trim();
+          if (!content) {
+            showToast('正文内容不能为空', true);
+            return;
+          }
+          const personIds = newsEditPersonIds.value
+            .split(/[,，\n]/)
+            .map(item =>item.trim())
+            .filter(Boolean);
+          try {
+            const resp = await fetch('./api/news/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                news_id: newsEdit.value.id,
+                title: newsEditTitle.value.trim(),
+                content,
+                sensitivity: newsEditSensitivity.value,
+                person_ids: personIds
+              })
+            });
+            if (!resp.ok) throw new Error('网络异常');
+            showToast('全局事实已更新');
+            closeNewsEdit();
+            await fetchData();
+          } catch (e) {
+            console.error(e);
+            showToast('更新全局事实失败', true);
+          }
+        };
+
+        const setTab = (tab) => {
+          activeTab.value = tab;
+        };
+
+        const applyTemplate = (type) => {
+          const templates = {
+            死党: '与 Bot 关系极其深厚，是多年无话不谈的死党伙伴。喜好调侃，交互频繁，值得完全信任。',
+            对立: '群里喜欢唱反调的群友。说话经常带刺，与 Bot 关系紧张，容易产生摩擦，但主要局限于善意吐槽与对抗。',
+            新人: '群聊新成员。交互较少，目前对 Bot 保持客气和距离，尚未建立深厚的信任关系。'
+          };
+          editPersonaForm.value.text = templates[type] || '';
+        };
+
+        const triggerJob = async (type) => {
+          if (type === 'summary') {
+            triggeringSummary.value = true;
+            try {
+              const res = await fetch('./api/trigger/summary', { method: 'POST' });
+              const data = await res.json();
+              if (data.status === 'success') {
+                showToast(`提取群聊快照完毕: 整合群数=${data.stats.summarized}, 保持数=${data.stats.skipped}`);
+                await fetchData();
+              } else {
+                showToast('提取群快照异常: ' + data.message, true);
+              }
+            } catch (e) {
+              showToast('提取群快照网络连接失败', true);
+            } finally {
+              triggeringSummary.value = false;
+            }
+          } else if (type === 'news') {
+            triggeringNews.value = true;
+            try {
+              const res = await fetch('./api/trigger/news', { method: 'POST' });
+              const data = await res.json();
+              if (data.status === 'success') {
+                showToast(`整合全局事实完毕: 提炼新事实=${data.stats.created}, 淘汰更替事实=${data.stats.evicted}`);
+                await fetchData();
+              } else {
+                showToast('整合全局事实异常: ' + data.message, true);
+              }
+            } catch (e) {
+              showToast('整合全局事实网络连接失败', true);
+            } finally {
+              triggeringNews.value = false;
+            }
+          }
+        };
+
+        const exportData = () => {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+            summaries: summaries.value,
+            news: news.value,
+            personas: personas.value
+          }, null, 2));
+          const dlAnchorElem = document.createElement('a');
+          dlAnchorElem.setAttribute("href", dataStr);
+          dlAnchorElem.setAttribute("download", `mofox_memory_brain_backup_${new Date().toISOString().split('T')[0]}.json`);
+          dlAnchorElem.click();
+        };
+
+        onMounted(fetchData);
+
+        return {
+          activeTab, loading, loadError, loadedOnce, summaries, news, personas, health,
+          groupSearch, selectedGroup, newsSearch, newsFilterSensitivity, selectedNews,
+          personaSearch, editPersonaForm, personaModalOpen, personaModalPid,
+          summaryEditOpen, summaryEdit, summaryEditContent,
+          newsEditOpen, newsEdit, newsEditTitle, newsEditContent, newsEditSensitivity,
+          newsEditPersonIds,
+          triggeringSummary, triggeringNews,
+          opMessage, opError, viewTitle, syncInfoText, lastSyncLabel,
+          fetchData, formatTime, filteredGroups, selectGroup,
+          toggleSummary, confirmDeleteGroup, filteredNews, toggleNewsSelection,
+          confirmDeleteOneNews, confirmBatchDeleteNews, filteredPersonas, platformLabel,
+          openPersonaModal, closePersonaModal, savePersona, confirmDeletePersona,
+          openSummaryEdit, closeSummaryEdit, saveSummaryEdit,
+          openNewsEdit, closeNewsEdit, saveNewsEdit,
+          setTab, applyTemplate, triggerJob, exportData
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
