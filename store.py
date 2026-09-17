@@ -26,6 +26,7 @@ import copy
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -120,6 +121,8 @@ class StreamMemoryStore:
         self._file_mtimes: dict[Path, float] = {}
         self._watcher_task: asyncio.Task | None = None
         self._watch_interval = watch_interval
+        self.last_watch_check_at: float | None = None
+        self.last_write_at: float | None = None
 
     # ------------------------------------------------------------------
     # 加载 / 保存
@@ -140,6 +143,12 @@ class StreamMemoryStore:
         self._record_mtime(self.summaries_path)
         self._record_mtime(self.news_path)
         self._record_mtime(self.personas_path)
+        known_mtimes = [
+            mtime
+            for path, mtime in self._file_mtimes.items()
+            if path in {self.summaries_path, self.news_path, self.personas_path}
+        ]
+        self.last_write_at = max(known_mtimes, default=None)
         self._loaded = True
 
     @staticmethod
@@ -175,6 +184,7 @@ class StreamMemoryStore:
             json.dumps(self._summaries, ensure_ascii=False, indent=2),
         )
         self._record_mtime(self.summaries_path)
+        self.last_write_at = self._file_mtimes.get(self.summaries_path)
 
     def _write_news(self) -> None:
         """将新闻数据库写入磁盘（调用方必须持有 ``self._lock``）。"""
@@ -183,6 +193,7 @@ class StreamMemoryStore:
             json.dumps(self._news, ensure_ascii=False, indent=2),
         )
         self._record_mtime(self.news_path)
+        self.last_write_at = self._file_mtimes.get(self.news_path)
 
     def _write_personas(self) -> None:
         """将人物信息数据库写入磁盘（调用方必须持有 ``self._lock``）。"""
@@ -191,6 +202,7 @@ class StreamMemoryStore:
             json.dumps(self._personas, ensure_ascii=False, indent=2),
         )
         self._record_mtime(self.personas_path)
+        self.last_write_at = self._file_mtimes.get(self.personas_path)
 
     # ------------------------------------------------------------------
     # 文件变化监视：外部修改本地文件时同步刷新内存缓存
@@ -232,6 +244,7 @@ class StreamMemoryStore:
     async def _reload_if_changed(self) -> None:
         """文件 mtime 与内存记录不一致时，重载对应数据库。"""
         async with self._lock:
+            self.last_watch_check_at = time.time()
             if not self._loaded:
                 return
             for path, attr, default in (
@@ -317,6 +330,8 @@ class StreamMemoryStore:
         group_id: str = "",
         group_name: str = "",
         max_entries: int,
+        last_message_id: str = "",
+        last_message_timestamp: float = 0.0,
     ) -> None:
         """向指定群聊追加一条摘要。
 
@@ -339,10 +354,41 @@ class StreamMemoryStore:
             group.group_id = group_id or group.group_id
             group.group_name = group_name or group.group_name
             group.entries.append(entry)
+            group.last_message_id = last_message_id
+            group.last_message_timestamp = last_message_timestamp
+            group.cursor_initialized = True
             if max_entries > 0 and len(group.entries) > max_entries:
                 group.entries = group.entries[-max_entries:]
             groups[stream_id] = group.to_dict()
             self._write_summaries()
+
+    async def initialize_summary_cursor(
+        self,
+        stream_id: str,
+        last_message_id: str,
+        last_message_timestamp: float,
+    ) -> None:
+        """为旧数据建立消息消费基线，不生成摘要。"""
+        await self._ensure_loaded()
+        async with self._lock:
+            groups = self._summaries.setdefault("groups", {})
+            group = GroupSummary.from_dict(groups.get(stream_id)) or GroupSummary(stream_id=stream_id)
+            group.last_message_id = last_message_id
+            group.last_message_timestamp = last_message_timestamp
+            group.cursor_initialized = True
+            groups[stream_id] = group.to_dict()
+            self._write_summaries()
+
+    async def advance_summary_cursor(
+        self,
+        stream_id: str,
+        last_message_id: str,
+        last_message_timestamp: float,
+    ) -> None:
+        """在无需生成摘要时提交已成功消费的消息位置。"""
+        await self.initialize_summary_cursor(
+            stream_id, last_message_id, last_message_timestamp
+        )
 
     async def deprecate_group_summaries(self, stream_id: str) -> None:
         """将指定群聊的全部摘要条目标记为废弃（不删除）。

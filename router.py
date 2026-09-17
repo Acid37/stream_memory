@@ -157,7 +157,12 @@ class StreamMemoryRouter(BaseRouter):
                         "summaries_count": len(summaries),
                         "news_count": len(news),
                         "personas_count": len(personas),
-                        "last_sync": store._last_watch_check_at if hasattr(store, "_last_watch_check_at") else None
+                        "last_sync": store.last_watch_check_at,
+                        "last_write": store.last_write_at,
+                        "last_news_consolidated_at": max(
+                            (float(item.get("consolidated_at") or 0.0) for item in news),
+                            default=0.0,
+                        ),
                     }
                 }
             except Exception as e:

@@ -1412,9 +1412,19 @@
             <div class="hint">三层敏感级别（普通、软警告、强隔离）过滤网关已常驻就绪</div>
           </div>
           <div class="summary-card">
-            <div class="label">最近写入检查</div>
+            <div class="label">最近文件检查</div>
             <div class="value">{{ lastSyncLabel }}</div>
             <div class="hint">底层文件监控的最新检查时间</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">最近记忆写入</div>
+            <div class="value">{{ formatTime(health.last_write) }}</div>
+            <div class="hint">摘要、新闻或人物数据最后一次成功落盘时间</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">最近新闻巩固</div>
+            <div class="value">{{ formatTime(health.last_news_consolidated_at) }}</div>
+            <div class="hint">新闻层最后一次完成 LLM 整理的时间，不等同于事件发生时间</div>
           </div>
         </div>
 
@@ -1552,7 +1562,10 @@
           />
           <div class="news-body">
             <div class="news-meta-row">
-              <span> {{ formatTime(item.timestamp) }}</span>
+              <span>
+                {{ item.event_time_known === false ? '事件时间未知' : formatTime(item.timestamp) }}
+                <small v-if="item.consolidated_at"> · 整理于 {{ formatTime(item.consolidated_at) }}</small>
+              </span>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <span :class="['level-badge', item.sensitivity || 'normal']">
                   {{ item.sensitivity || 'normal' }}
@@ -1670,7 +1683,11 @@
         <div class="topline">
           <div class="topline-title">
             <div class="topline-name">编辑全局事实</div>
-            <div class="subtitle">{{ newsEdit ? formatTime(newsEdit.timestamp) : '' }} · 修改后立即写回新闻层</div>
+            <div class="subtitle">
+              {{ newsEdit && newsEdit.event_time_known === false ? '事件时间未知' : (newsEdit ? formatTime(newsEdit.timestamp) : '') }}
+              <template v-if="newsEdit && newsEdit.consolidated_at"> · 整理于 {{ formatTime(newsEdit.consolidated_at) }}</template>
+              · 修改后立即写回新闻层
+            </div>
           </div>
           <button class="close-btn" @click="closeNewsEdit" aria-label="关闭">✕</button>
         </div>
@@ -1718,7 +1735,15 @@
         const summaries = ref([]);
         const news = ref([]);
         const personas = ref({});
-        const health = ref({ total_size_kb: 0, summaries_count: 0, news_count: 0, personas_count: 0, last_sync: null });
+        const health = ref({
+          total_size_kb: 0,
+          summaries_count: 0,
+          news_count: 0,
+          personas_count: 0,
+          last_sync: null,
+          last_write: null,
+          last_news_consolidated_at: null
+        });
 
         const groupSearch = ref('');
         const selectedGroup = ref(null);
@@ -1771,8 +1796,8 @@
 
         const syncInfoText = computed(() => {
           const lastSync = health.value.last_sync;
-          if (!lastSync) return '尚未执行写入检查，请稍后刷新页面。';
-          return `上次写入检查：${typeof lastSync === 'number' ? formatTime(lastSync) : lastSync}`;
+          if (!lastSync) return '尚未执行文件检查，请稍后刷新页面。';
+          return `上次文件检查：${typeof lastSync === 'number' ? formatTime(lastSync) : lastSync}`;
         });
 
         const lastSyncLabel = computed(() => {
@@ -2056,6 +2081,8 @@
           newsEdit.value = {
             id: item.id,
             timestamp: item.timestamp,
+            consolidated_at: item.consolidated_at,
+            event_time_known: item.event_time_known,
             title: item.title || '',
             content: item.content || '',
             sensitivity: item.sensitivity || 'normal'

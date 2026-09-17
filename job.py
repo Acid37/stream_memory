@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from src.app.plugin_system.api import log_api, stream_api
@@ -32,6 +33,11 @@ from .prompts import (
     SENSITIVITY_PROMPT_NAME,
     SUMMARY_PROMPT,
     SUMMARY_PROMPT_NAME,
+)
+from .semantic_store import (
+    make_embedding_fn,
+    remove_news_entries,
+    upsert_news_entries,
 )
 from .store import StreamMemoryStore, shared_store
 from .sub_agent import call_sub_agent, extract_json_array, resolve_prompt
@@ -79,6 +85,49 @@ def _collect_participants(messages: list[Message]) -> list[PersonRef]:
         seen.add(person_id)
         refs.append(PersonRef(person_id=person_id, name=person_name_of(message)))
     return refs
+
+
+def _messages_after_cursor(messages: list[Message], group: Any) -> list[Message]:
+    """返回游标之后的消息；游标 ID 可见时优先按列表位置切分。"""
+    if not getattr(group, "cursor_initialized", False):
+        return list(messages)
+
+    cursor_id = str(getattr(group, "last_message_id", "") or "")
+    if cursor_id:
+        for index, message in enumerate(messages):
+            if str(getattr(message, "message_id", "") or "") == cursor_id:
+                return messages[index + 1 :]
+
+    cursor_time = float(getattr(group, "last_message_timestamp", 0.0) or 0.0)
+    return [message for message in messages if message_time(message) > cursor_time]
+
+
+def _message_cursor(messages: list[Message]) -> tuple[str, float]:
+    """取得一批消息末尾的稳定消费位置。"""
+    if not messages:
+        return "", 0.0
+    latest = messages[-1]
+    return (
+        str(getattr(latest, "message_id", "") or ""),
+        message_time(latest),
+    )
+
+
+def _news_event_time(
+    entries: list[SummaryEntry], raw_indices: Any
+) -> tuple[float, bool]:
+    """由 LLM 声明的来源摘要计算事件时间，并返回来源是否可信。"""
+    source_indices: list[int] = []
+    if isinstance(raw_indices, list):
+        for raw_index in raw_indices:
+            try:
+                source_index = int(raw_index)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= source_index < len(entries) and source_index not in source_indices:
+                source_indices.append(source_index)
+    source_entries = [entries[index] for index in source_indices] or entries
+    return max((entry.timestamp for entry in source_entries), default=0.0), bool(source_indices)
 
 
 def _build_chat_flow(messages: list[Message]) -> str:
@@ -200,8 +249,23 @@ async def _summarize_group(
     limit = int(summary_cfg.max_messages_per_run)
 
     messages = await stream_api.get_stream_messages(stream_id, limit=limit)
+    if not messages:
+        return False
+
+    # 旧版摘要数据没有消息游标。升级后的第一次运行只把当前消息末尾记为
+    # 基线，避免把此前反复摘要过的窗口再次包装成一批“新”摘要。
+    if group.entries and not group.cursor_initialized:
+        cursor_id, cursor_time = _message_cursor(messages)
+        await store.initialize_summary_cursor(stream_id, cursor_id, cursor_time)
+        return False
+
+    messages = _messages_after_cursor(messages, group)
     chat_flow = _build_chat_flow(messages)
-    if not messages or not chat_flow:
+    if not messages:
+        return False
+    cursor_id, cursor_time = _message_cursor(messages)
+    if not chat_flow:
+        await store.advance_summary_cursor(stream_id, cursor_id, cursor_time)
         return False
 
     group_name = group.group_name
@@ -244,11 +308,15 @@ async def _summarize_group(
         user=user,
         stream_id=stream_id,
     )
-    if not result or result == NO_MEANINGFUL_CONTENT_TOKEN:
+    if not result:
+        return False
+
+    if result == NO_MEANINGFUL_CONTENT_TOKEN:
+        await store.advance_summary_cursor(stream_id, cursor_id, cursor_time)
         return False
 
     entry = SummaryEntry(
-        timestamp=time.time(),
+        timestamp=cursor_time or time.time(),
         content=result,
         participants=_collect_participants(messages),
     )
@@ -259,6 +327,8 @@ async def _summarize_group(
         group_id=group_id,
         group_name=group_name,
         max_entries=int(summary_cfg.max_entries_per_group),
+        last_message_id=cursor_id,
+        last_message_timestamp=cursor_time,
     )
     return True
 
@@ -294,6 +364,20 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
     persona_task = _llm_task(config, "persona_task")
     max_text_length = int(getattr(config.persona, "max_text_length", 0) or 0)
 
+    # 语义向量召回：新闻巩固时同步 upsert 进 Chroma（默认关闭，见 semantic.enabled）
+    semantic_cfg = getattr(config, "semantic", None)
+    vector_db = None
+    embed_fn = None
+    semantic_collection = ""
+    if semantic_cfg is not None and getattr(semantic_cfg, "enabled", False):
+        from src.kernel.vector_db import get_vector_db_service
+
+        vector_db = get_vector_db_service(str(Path(config.storage.data_dir) / "vector_db"))
+        embed_fn = make_embedding_fn()
+        semantic_collection = str(
+            getattr(semantic_cfg, "collection_name", "") or "stream_memory__semantic_news"
+        )
+
     groups = await store.list_group_summaries()
     stats: dict[str, Any] = {
         "groups": len(groups),
@@ -323,6 +407,14 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
             stats["created"] += created
             stats["evicted"] += len(evicted)
             all_new_entries.extend(new_entries)
+            if vector_db is not None and embed_fn is not None and (new_entries or evicted):
+                await _sync_semantic_vectors(
+                    vector_db,
+                    embed_fn,
+                    semantic_collection,
+                    new_entries,
+                    evicted,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(f"新闻整理失败 stream_id={group.stream_id}: {exc}")
             stats["skipped"] += 1
@@ -349,6 +441,21 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
     return stats
 
 
+async def _sync_semantic_vectors(
+    vector_db: Any,
+    embed_fn: Any,
+    collection_name: str,
+    new_entries: list[NewsEntry],
+    evicted: list[NewsEntry],
+) -> None:
+    """把本轮新闻同步到语义向量库（失败仅告警，不阻塞新闻写入主流程）。"""
+    try:
+        await upsert_news_entries(vector_db, collection_name, embed_fn, new_entries)
+        await remove_news_entries(vector_db, collection_name, [e.id for e in evicted])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"语义向量同步失败: {exc}")
+
+
 async def _news_for_group(
     store: StreamMemoryStore,
     group: Any,
@@ -356,7 +463,7 @@ async def _news_for_group(
     task: str,
     sensitivity_cfg: Any,
     sensitivity_task: str,
-) -> tuple[int, list[NewsEntry]]:
+) -> tuple[int, list[NewsEntry], list[NewsEntry]]:
     """为单个群聊的未废弃摘要执行一次新闻整理，随后标记已消费摘要为废弃。
 
     新增于 shameimaru_memory：
@@ -408,9 +515,9 @@ async def _news_for_group(
     roster_text = "\n".join(roster_lines) if roster_lines else "（无）"
 
     lines: list[str] = []
-    for entry in entries:
+    for index, entry in enumerate(entries):
         clock = format_local_time(entry.timestamp)
-        lines.append(f"【{clock}】\n{entry.content}")
+        lines.append(f"【摘要序号 {index}｜{clock}】\n{entry.content}")
     summaries_text = "\n\n".join(lines)
 
     system = resolve_prompt(NEWS_PROMPT_NAME, NEWS_PROMPT)
@@ -431,7 +538,7 @@ async def _news_for_group(
         return 0, [], []
     items = extract_json_array(result)
 
-    now = time.time()
+    consolidated_at = time.time()
     # 先创建全部新闻条目，再批量做敏感分级，最后逐一写入存储
     new_entries: list[NewsEntry] = []
     for item in items:
@@ -442,12 +549,17 @@ async def _news_for_group(
         participants = _resolve_participants(
             item.get("participants"), roster_by_id, roster_by_name
         )
+        event_timestamp, event_time_known = _news_event_time(
+            entries, item.get("source_indices")
+        )
         entry = NewsEntry(
             id=f"news-{uuid.uuid4().hex}",
-            timestamp=now,
+            timestamp=event_timestamp,
             title=title,
             content=content,
             participants=participants,
+            consolidated_at=consolidated_at,
+            event_time_known=event_time_known,
         )
         entry.origin_stream_id = group.stream_id
         new_entries.append(entry)

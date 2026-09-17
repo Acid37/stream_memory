@@ -258,6 +258,42 @@ class StreamMemoryConfig(BaseConfig):
             hint="巩固时调用，对每条新闻做 hard_scoped / soft_scoped / 无标记 三级判断",
         )
 
+    @config_section("semantic", title="语义召回配置", tag="database")
+    class SemanticSection(SectionBase):
+        """语义向量召回，叠加在现有精确 person_id 召回之上（默认关闭）。"""
+
+        enabled: bool = Field(
+            default=False,
+            description="是否启用语义向量召回（新闻巩固时同步 upsert 进 Chroma，回复前按语义召回）",
+            label="启用语义召回",
+            tag="ai",
+            hint="开启后新闻巩固会额外做一次 bge-m3 embedding，回复前会额外检索一次向量库",
+        )
+        collection_name: str = Field(
+            default="stream_memory__semantic_news",
+            description="语义召回使用的 Chroma 集合名",
+            label="集合名",
+            placeholder="stream_memory__semantic_news",
+            tag="general",
+        )
+        top_k: int = Field(
+            default=5,
+            description="语义召回最终注入的条目数上限",
+            label="召回条数上限",
+            ge=1,
+            le=20,
+            tag="performance",
+        )
+        decay_lambda: float = Field(
+            default=0.01,
+            description="语义召回时间衰减系数（每天），按「相似度×时间衰减」重排，让近期记忆优先；0 表示不衰减",
+            label="时间衰减系数",
+            ge=0.0,
+            le=1.0,
+            tag="performance",
+            hint="约 1/λ 天后权重衰减到约 37%；默认 0.01 约对应 100 天",
+        )
+
     plugin: PluginSection = Field(default_factory=PluginSection)
     storage: StorageSection = Field(default_factory=StorageSection)
     llm: LLMSection = Field(default_factory=LLMSection)
@@ -266,3 +302,4 @@ class StreamMemoryConfig(BaseConfig):
     persona: PersonaSection = Field(default_factory=PersonaSection)
     injection: InjectionSection = Field(default_factory=InjectionSection)
     sensitivity: SensitivitySection = Field(default_factory=SensitivitySection)
+    semantic: SemanticSection = Field(default_factory=SemanticSection)

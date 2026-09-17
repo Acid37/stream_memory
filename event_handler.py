@@ -16,6 +16,7 @@ hard_scoped 物理阻断，soft_scoped 跨群带警示前缀放行。
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from src.app.plugin_system.api import log_api, prompt_api, stream_api
@@ -25,6 +26,8 @@ from src.core.prompt import SystemReminderConsumeType, SystemReminderInsertType
 from src.kernel.event import EventDecision
 
 from .config import StreamMemoryConfig
+from .semantic_recall import StreamMemorySemanticRecall
+from .semantic_store import make_single_embedding_fn
 from .store import StreamMemoryStore, shared_store
 from .utils import (
     SENSITIVITY_SOFT_SCOPED,
@@ -37,9 +40,13 @@ logger = log_api.get_logger("stream_memory.injector")
 
 _NEWS_REMINDER_NAME = "相关新闻"
 _PERSONA_REMINDER_NAME = "相关人物背景"
+_SEMANTIC_REMINDER_NAME = "语义相关记忆"
 
 _NEWS_GUIDE_HEADER = (
     "以下是与当前对话中出现的相关人物有关的近期新闻记忆，供你回复时参考："
+)
+_SEMANTIC_GUIDE_HEADER = (
+    "以下是与当前对话语义相关的记忆条目，供你回复时参考："
 )
 _NEWS_GUIDE_FOOTER = (
     "请自然地参考这些信息，仅在当前对话明确相关时使用，不要一次性罗列；"
@@ -91,7 +98,8 @@ class StreamMemoryRecallInjector(BaseEventHandler):
     订阅 ``on_message_received``，在消息入站时：
     1. 读取当前聊天流的 unread message 与最近历史消息，收集出现的人物 ID；
     2. 按人物匹配 + 三级敏感分级过滤召回新闻记忆，写入流私有 system reminder；
-    3. 过滤人物层中涉及相关人物的人物背景信息，写入流私有 system reminder。
+    3. 过滤人物层中涉及相关人物的人物背景信息，写入流私有 system reminder；
+    4. （可选，默认关闭）按文本 embedding 做语义向量召回，写入流私有 system reminder。
 
     无相关内容时删除对应 reminder，避免过期内容被继续注入。
     """
@@ -235,8 +243,10 @@ class StreamMemoryRecallInjector(BaseEventHandler):
 
         news_block = ""
         persona_block = ""
+        semantic_block = ""
         news_matched = 0
         personas_matched = 0
+        semantic_matched = 0
 
         if news_enabled:
             news_block, news_matched = await self._build_news_block(
@@ -248,7 +258,20 @@ class StreamMemoryRecallInjector(BaseEventHandler):
                 store, person_ids, int(injection.persona_max_inject)
             )
 
-        # 同步新闻与人物背景 reminder；私聊禁用时也要清理旧内容。
+        semantic_cfg = getattr(config, "semantic", None)
+        # 语义召回与新闻召回共享同一记忆域：额外叠加新闻注入门控，
+        # 私聊需同时满足 allow_private_news（私聊隔离），群聊跟随 inject_news。
+        semantic_enabled = (
+            semantic_cfg is not None
+            and bool(getattr(semantic_cfg, "enabled", False))
+            and news_enabled
+        )
+        if semantic_enabled:
+            semantic_block, semantic_matched = await self._build_semantic_block(
+                message, stream, stream_id, semantic_cfg, injection
+            )
+
+        # 同步新闻 / 人物背景 / 语义记忆 reminder；对应通道禁用时清理旧内容。
         self._sync_reminder(
             stream_id,
             bucket,
@@ -261,13 +284,20 @@ class StreamMemoryRecallInjector(BaseEventHandler):
             _PERSONA_REMINDER_NAME,
             persona_block if personas_enabled else "",
         )
+        self._sync_reminder(
+            stream_id,
+            bucket,
+            _SEMANTIC_REMINDER_NAME,
+            semantic_block if semantic_enabled else "",
+        )
 
         logger.debug(
             f"已同步流私有 system reminder stream={stream_id[:8]} "
             f"chat_type={chat_type or 'unknown'} injection="
-            f"news:{news_enabled}/personas:{personas_enabled} "
+            f"news:{news_enabled}/personas:{personas_enabled}/semantic:{semantic_enabled} "
             f"bucket={bucket} persons={len(person_ids)} "
             f"news_matched={news_matched} personas_matched={personas_matched} "
+            f"semantic_matched={semantic_matched} "
             f"person_ids={sorted(person_ids)}"
         )
         return EventDecision.SUCCESS, params
@@ -354,6 +384,82 @@ class StreamMemoryRecallInjector(BaseEventHandler):
             f"{_PERSONA_GUIDE_HEADER}\n\n{body}\n\n{_PERSONA_GUIDE_FOOTER}",
             len(matched),
         )
+
+    @staticmethod
+    def _collect_recent_text(
+        message: Any,
+        stream: Any,
+        history_limit: int = 20,
+    ) -> str:
+        """拼接当前消息与最近历史消息的纯文本，作为语义召回查询文本。"""
+        parts: list[str] = []
+        current = str(getattr(message, "processed_plain_text", "") or "").strip()
+        if current:
+            parts.append(current)
+        if stream is not None:
+            context = getattr(stream, "context", None)
+            history = getattr(context, "history_messages", None) or []
+            for msg in history[-max(0, int(history_limit)):]:
+                if str(getattr(msg, "sender_role", "") or "").lower() == "bot":
+                    continue
+                text = str(getattr(msg, "processed_plain_text", "") or "").strip()
+                if text and text != current:
+                    parts.append(text)
+        return "\n".join(parts)
+
+    async def _build_semantic_block(
+        self,
+        message: Any,
+        stream: Any,
+        stream_id: str,
+        semantic_cfg: Any,
+        injection: Any,
+    ) -> tuple[str, int]:
+        """语义向量召回并构建注入块（失败降级为空，不阻塞主流程）。
+
+        召回走 dynamic 尾部注入（由 ``_sync_reminder`` 统一负责），
+        与现有精确 person_id 召回分属不同 reminder，两者互补、互不干扰。
+        任何 embedding / Chroma 异常都被吞掉并降级为空块，不影响正常回复。
+        """
+        top_k = int(getattr(semantic_cfg, "top_k", 5) or 5)
+        collection_name = str(
+            getattr(semantic_cfg, "collection_name", "")
+            or "stream_memory__semantic_news"
+        )
+        query_text = self._collect_recent_text(
+            message,
+            stream,
+            int(getattr(injection, "person_scan_history_limit", 20) or 20),
+        )
+        if not query_text:
+            return "", 0
+
+        config = self._get_config()
+        try:
+            from src.kernel.vector_db import get_vector_db_service
+
+            vector_db = get_vector_db_service(
+                str(Path(config.storage.data_dir) / "vector_db")
+            )
+            recaller = StreamMemorySemanticRecall(
+                make_single_embedding_fn(), vector_db, collection_name
+            )
+            body = await recaller.recall(
+                query_text,
+                current_stream_id=stream_id,
+                top_k=top_k,
+                warning=str(getattr(injection, "soft_scoped_warning", "") or ""),
+                decay_lambda=decay_lambda,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"语义召回失败 stream_id={stream_id}: {exc}")
+            return "", 0
+
+        body = body.strip()
+        if not body:
+            return "", 0
+        matched = body.count("\n- ") + (1 if body.startswith("- ") else 0)
+        return f"{_SEMANTIC_GUIDE_HEADER}\n{body}\n\n{_NEWS_GUIDE_FOOTER}", matched
 
     def _person_display_name(self, person_id: str) -> str:
         """从人物 ID 推断展示名称（无昵称表时退回 ID 末段）。"""

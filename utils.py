@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 
 from src.core.models.message import Message
@@ -49,6 +50,8 @@ def message_time(message: Any) -> float:
     value = getattr(message, "time", None)
     if isinstance(value, (int, float)):
         return float(value)
+    if isinstance(value, datetime):
+        return value.timestamp()
     return 0.0
 
 

@@ -112,6 +112,8 @@ class NewsEntry:
     participants: list[PersonRef] = field(default_factory=list)
     sensitivity: str = SENSITIVITY_NORMAL
     origin_stream_id: str = ""
+    consolidated_at: float = 0.0
+    event_time_known: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典。"""
@@ -123,6 +125,8 @@ class NewsEntry:
             "participants": [ref.to_dict() for ref in self.participants],
             "sensitivity": self.sensitivity,
             "origin_stream_id": self.origin_stream_id,
+            "consolidated_at": self.consolidated_at,
+            "event_time_known": self.event_time_known,
         }
 
     @classmethod
@@ -133,14 +137,18 @@ class NewsEntry:
         entry_id = str(data.get("id") or "").strip()
         if not entry_id:
             return None
+        has_consolidated_at = "consolidated_at" in data
+        timestamp = float(data.get("timestamp") or 0.0)
         return cls(
             id=entry_id,
-            timestamp=float(data.get("timestamp") or 0.0),
+            timestamp=timestamp,
             title=str(data.get("title") or "").strip(),
             content=str(data.get("content") or "").strip(),
             participants=participants_from(data.get("participants")),
             sensitivity=str(data.get("sensitivity") or SENSITIVITY_NORMAL),
             origin_stream_id=str(data.get("origin_stream_id") or ""),
+            consolidated_at=float(data.get("consolidated_at") or timestamp),
+            event_time_known=bool(data.get("event_time_known", has_consolidated_at)),
         )
 
 
@@ -159,6 +167,9 @@ class GroupSummary:
     group_name: str = ""
     chat_type: str = ""
     entries: list[SummaryEntry] = field(default_factory=list)
+    last_message_id: str = ""
+    last_message_timestamp: float = 0.0
+    cursor_initialized: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典。"""
@@ -169,6 +180,9 @@ class GroupSummary:
             "group_name": self.group_name,
             "chat_type": self.chat_type,
             "entries": [entry.to_dict() for entry in self.entries],
+            "last_message_id": self.last_message_id,
+            "last_message_timestamp": self.last_message_timestamp,
+            "cursor_initialized": self.cursor_initialized,
         }
 
     @classmethod
@@ -191,4 +205,7 @@ class GroupSummary:
             group_name=str(data.get("group_name") or ""),
             chat_type=str(data.get("chat_type") or ""),
             entries=entries,
+            last_message_id=str(data.get("last_message_id") or ""),
+            last_message_timestamp=float(data.get("last_message_timestamp") or 0.0),
+            cursor_initialized=bool(data.get("cursor_initialized") or False),
         )
