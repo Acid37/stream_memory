@@ -10,6 +10,7 @@ SUMMARY_PROMPT_NAME = "stream_memory.summary"
 NEWS_PROMPT_NAME = "stream_memory.news"
 PERSONA_PROMPT_NAME = "stream_memory.persona"
 SENSITIVITY_PROMPT_NAME = "stream_memory.sensitivity"
+PROMOTION_PROMPT_NAME = "stream_memory.promotion"
 
 _NO_MEANINGFUL_CONTENT_TOKEN = "NO_MEANINGFUL_CONTENT"
 NO_MEANINGFUL_CONTENT_TOKEN = _NO_MEANINGFUL_CONTENT_TOKEN
@@ -63,9 +64,29 @@ SENSITIVITY_PROMPT: str = """你是记忆系统的敏感信息分级子代理。
 - "sensitivity": 敏感等级（"normal"/"soft_scoped"/"hard_scoped"）
 只输出 JSON 数组，不要输出其他内容。"""
 
+PROMOTION_PROMPT: str = """你是长期记忆晋升判官。敏感度只表示可见范围，不表示重要性或永久性。你要判断每条新闻是否有资格进入长期人物画像。
+
+分类：
+- reject：无保存价值的寒暄、表情、玩笑或重复内容
+- transient：短期状态，通常保留 1～3 天
+- episode：一次事件、项目闲聊或阶段性话题，通常保留 7～30 天
+- commitment：尚未完成的明确承诺或待办，完成前保留
+- stable_fact：身份、昵称、用户明确声明的长期偏好/边界/持续职责
+
+硬规则：
+1. 只有 stable_fact 或明确的长期 commitment 才可 persona_eligible=true。
+2. 一次项目讨论、技术问题、游戏话题、寒暄、表情包、玩笑、临时情绪/健康/作息不得进入人物画像。
+3. 第三方评价、心理诊断、人格/依恋/占有欲等模型推断不得进入人物画像。
+4. 未标记作用域的角色扮演内容不得进入人物画像。
+5. hard_scoped 内容默认 persona_eligible=false；敏感度绝不代表更重要。
+6. 不确定时拒绝晋升，宁可遗忘一次闲聊，也不要永久固化错误印象。
+
+输出 JSON 数组，每项包含：index、memory_kind、persona_eligible、importance(0到1)、confidence(0到1)、ttl_days、scope(global/stream/roleplay)、reason。只输出 JSON。"""
+
 PROMPT_TEMPLATES: dict[str, str] = {
     SUMMARY_PROMPT_NAME: SUMMARY_PROMPT,
     NEWS_PROMPT_NAME: NEWS_PROMPT,
     PERSONA_PROMPT_NAME: PERSONA_PROMPT,
     SENSITIVITY_PROMPT_NAME: SENSITIVITY_PROMPT,
+    PROMOTION_PROMPT_NAME: PROMOTION_PROMPT,
 }

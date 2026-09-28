@@ -449,7 +449,7 @@ class StreamMemoryRecallInjector(BaseEventHandler):
                 current_stream_id=stream_id,
                 top_k=top_k,
                 warning=str(getattr(injection, "soft_scoped_warning", "") or ""),
-                decay_lambda=decay_lambda,
+                decay_lambda=float(getattr(semantic_cfg, "decay_lambda", 0.0) or 0.0),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"语义召回失败 stream_id={stream_id}: {exc}")

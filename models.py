@@ -103,6 +103,15 @@ class NewsEntry:
       巩固时由 LLM 判断写入，召回时由程序按标记执行过滤或带约束放行。
     - ``origin_stream_id``：记忆来源群聊 ID。用于敏感记忆跨群过滤——
       hard_scoped 仅在 origin_stream_id 与当前群匹配时召回。
+
+    长期记忆生命周期字段（由晋升判官写入，见 ``job._judge_persona_promotion``）：
+    - ``memory_kind``：reject / transient / episode / commitment / stable_fact；
+    - ``persona_eligible``：是否允许写入人物画像（默认 False，fail-closed）；
+    - ``importance`` / ``confidence``：判官给出的重要性与置信度（0～1）；
+    - ``ttl_days``：判官给出的寿命（天），0 表示未指定，按 memory_kind 默认值；
+    - ``scope``：global / stream / roleplay；
+    - ``promotion_reason``：判官给出的理由，供后台审计；
+    - ``judged_at``：判官裁决时间戳，0 表示从未判官（此类条目不会被 TTL 淘汰）。
     """
 
     id: str
@@ -114,6 +123,14 @@ class NewsEntry:
     origin_stream_id: str = ""
     consolidated_at: float = 0.0
     event_time_known: bool = True
+    memory_kind: str = "episode"
+    persona_eligible: bool = False
+    importance: float = 0.0
+    confidence: float = 0.0
+    ttl_days: int = 0
+    scope: str = "stream"
+    promotion_reason: str = ""
+    judged_at: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典。"""
@@ -127,6 +144,14 @@ class NewsEntry:
             "origin_stream_id": self.origin_stream_id,
             "consolidated_at": self.consolidated_at,
             "event_time_known": self.event_time_known,
+            "memory_kind": self.memory_kind,
+            "persona_eligible": self.persona_eligible,
+            "importance": self.importance,
+            "confidence": self.confidence,
+            "ttl_days": self.ttl_days,
+            "scope": self.scope,
+            "promotion_reason": self.promotion_reason,
+            "judged_at": self.judged_at,
         }
 
     @classmethod
@@ -149,6 +174,14 @@ class NewsEntry:
             origin_stream_id=str(data.get("origin_stream_id") or ""),
             consolidated_at=float(data.get("consolidated_at") or timestamp),
             event_time_known=bool(data.get("event_time_known", has_consolidated_at)),
+            memory_kind=str(data.get("memory_kind") or "episode"),
+            persona_eligible=bool(data.get("persona_eligible", False)),
+            importance=float(data.get("importance") or 0.0),
+            confidence=float(data.get("confidence") or 0.0),
+            ttl_days=max(0, int(data.get("ttl_days") or 0)),
+            scope=str(data.get("scope") or "stream"),
+            promotion_reason=str(data.get("promotion_reason") or ""),
+            judged_at=float(data.get("judged_at") or 0.0),
         )
 
 

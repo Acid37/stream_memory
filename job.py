@@ -7,8 +7,10 @@
   （hard_scoped / soft_scoped / normal），并记录来源群聊 ID（origin_stream_id），
   供召回时跨群过滤。
 
-人物层更新：新闻条目因达到上限被删除时，
-逐人物增量更新本地持久化的人物背景信息表。
+人物层更新：本轮新落库的新闻先交给长期记忆晋升判官
+（PROMOTION_PROMPT）判定，只有 memory_kind 为 stable_fact / commitment
+且敏感度不是 hard_scoped 的条目才有资格更新人物背景信息表；
+判官调用失败时本轮不更新任何画像（fail-closed），避免闲聊再次固化。
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ from .prompts import (
     NO_MEANINGFUL_CONTENT_TOKEN,
     PERSONA_PROMPT,
     PERSONA_PROMPT_NAME,
+    PROMOTION_PROMPT,
+    PROMOTION_PROMPT_NAME,
     SENSITIVITY_PROMPT,
     SENSITIVITY_PROMPT_NAME,
     SUMMARY_PROMPT,
@@ -44,11 +48,14 @@ from .sub_agent import call_sub_agent, extract_json_array, resolve_prompt
 from .utils import (
     ALL_SENSITIVITY_LEVELS,
     SENSITIVITY_NORMAL,
+    SENSITIVITY_HARD_SCOPED,
     SENSITIVITY_SOFT_SCOPED,
     format_local_time,
+    is_entry_expired,
     message_time,
     person_id_of,
     person_name_of,
+    retention_enabled,
 )
 
 logger = log_api.get_logger("stream_memory.job")
@@ -362,6 +369,7 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
         getattr(sensitivity_cfg, "classify_task", "") or "tool_use"
     )
     persona_task = _llm_task(config, "persona_task")
+    promotion_task = _llm_task(config, "promotion_task")
     max_text_length = int(getattr(config.persona, "max_text_length", 0) or 0)
 
     # 语义向量召回：新闻巩固时同步 upsert 进 Chroma（默认关闭，见 semantic.enabled）
@@ -384,9 +392,23 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
         "processed": 0,
         "created": 0,
         "evicted": 0,
+        "expired": 0,
         "personas_updated": 0,
         "skipped": 0,
     }
+
+    # 寿命淘汰：判官结论已随上一轮新闻落库，先清掉超过寿命的记忆。
+    # 新建的新闻年龄为 0，不会被本轮淘汰；召回侧另有 is_entry_expired 兜底。
+    expired = await _expire_news(store, config)
+    stats["expired"] = len(expired)
+    if expired and vector_db is not None and embed_fn is not None:
+        await _sync_semantic_vectors(
+            vector_db,
+            embed_fn,
+            semantic_collection,
+            [],
+            expired,
+        )
 
     # 本轮全部新生成的新闻，用于循环结束后统一更新人物画像
     all_new_entries: list[NewsEntry] = []
@@ -402,6 +424,7 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
                 news_task,
                 sensitivity_cfg,
                 sensitivity_task,
+                promotion_task,
             )
             stats["processed"] += 1
             stats["created"] += created
@@ -419,23 +442,26 @@ async def run_news_job(plugin: Any) -> dict[str, Any]:
             logger.error(f"新闻整理失败 stream_id={group.stream_id}: {exc}")
             stats["skipped"] += 1
 
-    # 人物画像即时建档：用本轮全部新新闻涉及的人物统一更新画像。
-    # 相比旧的「新闻淘汰时才更新」，每次有实质内容整理成新闻就会立即
-    # 沉淀人物画像，显著缩短建档周期，避免大量用户长期没有档案。
+    # 人物层：晋升判官已在 _news_for_group 内逐群执行并随新闻一起落库，
+    # 这里只汇总放行的条目统一更新画像（判官失败时列表为空，本轮不更新）。
     if all_new_entries:
+        promotable_entries = [
+            entry for entry in all_new_entries if entry.persona_eligible
+        ]
         max_updates_per_round = int(
             getattr(config.persona, "max_updates_per_round", 0) or 0
         )
-        try:
-            stats["personas_updated"] = await _update_personas_from_news(
-                store,
-                all_new_entries,
-                persona_task,
-                max_text_length,
-                max_per_round=max_updates_per_round,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"人物画像即时建档失败: {exc}")
+        if promotable_entries:
+            try:
+                stats["personas_updated"] = await _update_personas_from_news(
+                    store,
+                    promotable_entries,
+                    persona_task,
+                    max_text_length,
+                    max_per_round=max_updates_per_round,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"人物画像即时建档失败: {exc}")
 
     logger.info(f"新闻记录完成: {stats}")
     return stats
@@ -463,6 +489,7 @@ async def _news_for_group(
     task: str,
     sensitivity_cfg: Any,
     sensitivity_task: str,
+    promotion_task: str,
 ) -> tuple[int, list[NewsEntry], list[NewsEntry]]:
     """为单个群聊的未废弃摘要执行一次新闻整理，随后标记已消费摘要为废弃。
 
@@ -478,8 +505,10 @@ async def _news_for_group(
     2. 调用新闻整理子 agent，解析出 JSON 数组；
     3. 创建全部 NewsEntry 对象，设置 origin_stream_id；
     4. 若敏感分级开启，对本组全部条目批量调用 ``_classify_sensitivity``；
-    5. 逐一写入存储（携带 sensitivity 与 origin_stream_id）；
-    6. 标记已消费摘要为废弃。
+    5. 调用 ``_judge_persona_promotion`` 判定长期价值，结论随条目一起落库
+       （判官失败时全部按不晋升处理，不阻塞新闻写入）；
+    6. 逐一写入存储（携带 sensitivity、origin_stream_id 与判官结论）；
+    7. 标记已消费摘要为废弃。
 
     Args:
         store: 存储层实例。
@@ -488,6 +517,7 @@ async def _news_for_group(
         task: 新闻层子 agent 使用的模型任务名。
         sensitivity_cfg: 敏感标记配置节。
         sensitivity_task: 敏感分级子 agent 使用的模型任务名。
+        promotion_task: 长期记忆晋升判官使用的模型任务名。
 
     Returns:
         tuple[int, list[NewsEntry], list[NewsEntry]]:
@@ -577,6 +607,20 @@ async def _news_for_group(
                 f"本组新闻按普通级处理: {exc}"
             )
 
+    # 长期记忆晋升判官：敏感度只控制可见范围，不代表重要性或寿命。
+    # 必须在落库前执行，判官结论才能随 NewsEntry 一起写入 news.json。
+    # 判官失败时全部条目保持 persona_eligible=False（fail-closed），不阻塞新闻写入。
+    if new_entries:
+        try:
+            await _judge_persona_promotion(
+                new_entries, promotion_task, group.stream_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"长期记忆晋升判官失败 stream_id={group.stream_id}，"
+                f"本组新闻不进入人物画像: {exc}"
+            )
+
     created = 0
     evicted: list[NewsEntry] = []
     for entry in new_entries:
@@ -657,6 +701,121 @@ async def _classify_sensitivity(
         if idx in sensitivity_map:
             entry.sensitivity = sensitivity_map[idx]
         # 未命中时保留 SENSITIVITY_NORMAL（NewsEntry 默认值，安全兜底）
+
+
+async def _judge_persona_promotion(
+    entries: list[NewsEntry],
+    task: str,
+    stream_id: str,
+) -> None:
+    """Judge which news items may update long-term persona memory.
+
+    The fail-closed default is ``persona_eligible=False``. Privacy scope and
+    long-term value are deliberately independent; hard-scoped items are always
+    blocked from automatic persona promotion even if the model says otherwise.
+    """
+    if not entries:
+        return
+
+    for entry in entries:
+        entry.persona_eligible = False
+
+    items_input = json.dumps(
+        [
+            {
+                "index": index,
+                "title": entry.title,
+                "content": entry.content,
+                "sensitivity": entry.sensitivity,
+            }
+            for index, entry in enumerate(entries)
+        ],
+        ensure_ascii=False,
+        indent=1,
+    )
+    system = resolve_prompt(PROMOTION_PROMPT_NAME, PROMOTION_PROMPT)
+    result = await call_sub_agent(
+        task=task,
+        request_name="stream_memory_promotion",
+        system=system,
+        user=f"以下是待判断的新闻条目：\n{items_input}",
+        stream_id=stream_id,
+    )
+    if not result:
+        return
+
+    verdicts = extract_json_array(result)
+    if not verdicts:
+        return
+
+    # 判官跑过即打标。模型漏判的条目会保留默认 memory_kind（episode），
+    # 从而按 kind 默认寿命过期，而不是因为漏判变成永久记忆。
+    judged_at = time.time()
+    for entry in entries:
+        entry.judged_at = judged_at
+
+    valid_kinds = {"reject", "transient", "episode", "commitment", "stable_fact"}
+    valid_scopes = {"global", "stream", "roleplay"}
+    for item in verdicts:
+        try:
+            index = int(item.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index >= len(entries):
+            continue
+
+        entry = entries[index]
+        kind = str(item.get("memory_kind") or "episode").strip()
+        scope = str(item.get("scope") or "stream").strip()
+        entry.memory_kind = kind if kind in valid_kinds else "episode"
+        entry.scope = scope if scope in valid_scopes else "stream"
+        entry.importance = min(1.0, max(0.0, float(item.get("importance") or 0.0)))
+        entry.confidence = min(1.0, max(0.0, float(item.get("confidence") or 0.0)))
+        entry.ttl_days = max(0, int(item.get("ttl_days") or 0))
+        entry.promotion_reason = str(item.get("reason") or "").strip()
+
+        model_allows = bool(item.get("persona_eligible", False))
+        kind_allows = entry.memory_kind in {"stable_fact", "commitment"}
+        entry.persona_eligible = (
+            model_allows
+            and kind_allows
+            and entry.sensitivity != SENSITIVITY_HARD_SCOPED
+        )
+
+
+async def _expire_news(store: StreamMemoryStore, config: Any) -> list[NewsEntry]:
+    """淘汰超过寿命的新闻条目。
+
+    寿命来自晋升判官写入的 ``ttl_days``；判官未给出时按 ``memory_kind``
+    取配置中的默认值（reject / transient / episode / commitment /
+    stable_fact）。从未判官的条目（历史数据）不会被淘汰。
+
+    Returns:
+        list[NewsEntry]: 被淘汰的条目（调用方需同步清理语义向量）。
+    """
+    news_cfg = getattr(config, "news", None)
+    if not retention_enabled(news_cfg):
+        return []
+    try:
+        entries = await store.get_news()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"读取新闻失败，跳过本轮寿命淘汰: {exc}")
+        return []
+    expired_ids = [
+        entry.id for entry in entries if is_entry_expired(entry, news_cfg)
+    ]
+    if not expired_ids:
+        return []
+    removed = await store.remove_news(expired_ids)
+    if removed:
+        kinds: dict[str, int] = {}
+        for entry in removed:
+            kinds[entry.memory_kind] = kinds.get(entry.memory_kind, 0) + 1
+        logger.info(
+            f"寿命淘汰 {len(removed)} 条新闻，"
+            f"memory_kind 分布={kinds}（共 {len(entries)} 条）"
+        )
+    return removed
 
 
 # ----------------------------------------------------------------------

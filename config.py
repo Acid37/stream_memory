@@ -3,7 +3,8 @@
 三层记忆系统（读写分离、三级敏感标记）：
 - 摘要层（summary）：周期性从群聊聊天流生成摘要，按群分别持久化。
 - 新闻层（news）：周期性读取所有群聊摘要，整理出总结性的记忆条目。
-- 人物层（persona）：新闻条目被删除（上限淘汰）时增量维护人物背景信息。
+- 人物层（persona）：新闻经晋升判官筛出 stable_fact / commitment 后，
+  增量维护人物背景信息。
 
 设计要点：
 - 三级敏感标记（sensitivity）：巩固时 LLM 做三级敏感判断（hard_scoped / soft_scoped / normal），
@@ -79,6 +80,13 @@ class StreamMemoryConfig(BaseConfig):
             placeholder="tool_use",
             tag="ai",
         )
+        promotion_task: str = Field(
+            default="tool_use",
+            description="新闻进入长期人物画像前使用的晋升判官任务名",
+            label="长期记忆晋升判官",
+            placeholder="tool_use",
+            tag="ai",
+        )
 
     @config_section("summary", title="摘要层配置", tag="timer")
     class SummarySection(SectionBase):
@@ -137,6 +145,55 @@ class StreamMemoryConfig(BaseConfig):
             le=500,
             tag="performance",
             hint="参与处理的摘要会在整理后标记为废弃",
+        )
+        retention_enabled: bool = Field(
+            default=True,
+            description="是否启用长期记忆寿命淘汰：超过寿命的新闻会被删除，且不再被召回",
+            label="启用寿命淘汰",
+            tag="performance",
+            hint="寿命优先取晋升判官的 ttl_days，判官未给出时按下面 memory_kind 的默认值",
+        )
+        retention_days_reject: int = Field(
+            default=1,
+            description="memory_kind=reject（无保存价值）的默认寿命（天），0 表示不过期",
+            label="reject 寿命（天）",
+            ge=0,
+            le=3650,
+            tag="performance",
+        )
+        retention_days_transient: int = Field(
+            default=3,
+            description="memory_kind=transient（短期状态）的默认寿命（天），0 表示不过期",
+            label="transient 寿命（天）",
+            ge=0,
+            le=3650,
+            tag="performance",
+        )
+        retention_days_episode: int = Field(
+            default=30,
+            description="memory_kind=episode（一次事件/阶段性话题）的默认寿命（天），0 表示不过期",
+            label="episode 寿命（天）",
+            ge=0,
+            le=3650,
+            tag="performance",
+        )
+        retention_days_commitment: int = Field(
+            default=0,
+            description="memory_kind=commitment（未完成承诺/待办）的默认寿命（天），0 表示完成前不过期",
+            label="commitment 寿命（天）",
+            ge=0,
+            le=3650,
+            tag="performance",
+            hint="程序无法判断承诺是否完成，需要靠判官给出 ttl_days 或保持 0",
+        )
+        retention_days_stable_fact: int = Field(
+            default=0,
+            description="memory_kind=stable_fact（身份/长期偏好/边界）的默认寿命（天），0 表示不过期",
+            label="stable_fact 寿命（天）",
+            ge=0,
+            le=3650,
+            tag="performance",
+            hint="长期事实建议保持不过期",
         )
 
     @config_section("persona", title="人物层配置", tag="ai")

@@ -1,7 +1,7 @@
 {
     "name": "stream_memory",
     "display_name": "三层流式记忆管理后台",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "description": "三层记忆系统（摘要层、新闻层、人物层）的可视化面板、编辑与管理后台。",
     "author": "可可",
     "license": "AGPL-3.0",

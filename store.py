@@ -33,7 +33,12 @@ from typing import TYPE_CHECKING, Any, Callable
 from src.app.plugin_system.api.log_api import get_logger
 
 from .models import GroupSummary, NewsEntry, SummaryEntry, participants_from
-from .utils import ALL_SENSITIVITY_LEVELS, SENSITIVITY_HARD_SCOPED, SENSITIVITY_NORMAL
+from .utils import (
+    ALL_SENSITIVITY_LEVELS,
+    SENSITIVITY_HARD_SCOPED,
+    SENSITIVITY_NORMAL,
+    is_entry_expired,
+)
 
 logger = get_logger("stream_memory.store")
 
@@ -497,8 +502,10 @@ class StreamMemoryStore:
            - ``soft_scoped``：跨流可见（带警示，警示前缀由 event_handler 添加）；
            - ``hard_scoped``：仅当 ``origin_stream_id == current_stream_id``
              时可召回，跨流物理不可达（用于用户手动标记的私密内容）；
-        4. 按时间戳降序排序；
-        5. 截断到 ``max_results`` 条。
+        4. 跳过已超过寿命的条目（见 :func:`utils.is_entry_expired`，
+           物理删除由新闻任务的淘汰器负责）；
+        5. 按时间戳降序排序；
+        6. 截断到 ``max_results`` 条。
 
         Args:
             person_ids: 当前对话出现的人物 ID 集合，仅召回涉及这些人物的新闻。
@@ -527,12 +534,16 @@ class StreamMemoryStore:
             # normal 与 soft_scoped 均放行（soft_scoped 的警示前缀由
             # event_handler 在注入时附加，本方法不做改写）
 
+            # 4. 超过寿命的条目不再召回（避免淘汰任务未跑时旧闲聊仍进入回复）
+            if is_entry_expired(entry, getattr(self._config, "news", None)):
+                continue
+
             matched.append(entry)
 
-        # 4. 按时间戳降序排序
+        # 5. 按时间戳降序排序
         matched.sort(key=lambda item: item.timestamp, reverse=True)
 
-        # 5. 截断到 max_results
+        # 6. 截断到 max_results
         if max_results > 0:
             matched = matched[:max_results]
         return matched

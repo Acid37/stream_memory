@@ -1581,6 +1581,11 @@
               <span class="tag-pill" v-for="p in item.participants" :key="p.person_id">
                  {{ p.name || p.display_name || p.person_id }}
               </span>
+              <span class="tag-pill" v-if="item.judged_at">
+                判官: {{ item.memory_kind }}{{ item.ttl_days > 0 ? ' · ' + item.ttl_days + '天' : ' · 默认寿命' }}
+              </span>
+              <span class="tag-pill" v-if="item.judged_at && item.persona_eligible">已入画像</span>
+              <span class="tag-pill" v-if="!item.judged_at">未判官（不淘汰）</span>
             </div>
           </div>
         </article>
